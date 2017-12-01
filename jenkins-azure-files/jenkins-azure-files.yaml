@@ -1,0 +1,117 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: k8s-plugin
+  labels:
+    name: k8s-plugin
+#---
+#apiVersion: v1
+#kind: PersistentVolume
+#metadata:
+#  name: jenkins-volume
+#spec:
+#  accessModes:
+#    - ReadWriteOnce
+#  capacity:
+#    storage: 500Gi
+#  azureDisk:
+#    diskName: data.vhd
+#    diskURI: https://00niqxkiq4emltgagnt0.blob.core.windows.net/vhds/data.vhd
+#    cachingMode: None
+#    fsType: ext4
+#    readOnly: false
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: azure-secret
+  namespace: k8s-plugin
+type: Opaque
+data:
+  azurestorageaccountname: MDBuaXF4a2lxNGVtbHRnYWdudDA=
+  azurestorageaccountkey: enBWR29QbDY0ZmR5d2Z6RlJIWFJ6S2N3Wmk4VGV3Uks2Y3Uyb2hGZG52bmFJSW9BNWZmL3JXbnRlNm9hWlltU05QSXFFeGJha2FUOUVJZnBpenlycHc9PQ==
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: jenkins-volume
+spec:
+  capacity:
+    storage: 100Gi
+  accessModes:
+    - ReadWriteOnce
+  azureFile:
+    secretName: azure-secret
+    shareName: jenkinshome
+    readOnly: false
+  claimRef:
+    namespace: k8s-plugin
+    name: pvc-jenkins
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-jenkins
+  namespace: k8s-plugin
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+---
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: jenkins-master
+  namespace: k8s-plugin
+  labels:
+    name: jenkins-master
+spec:
+  replicas: 1
+  template:
+    metadata:
+      name: jenkins-master
+      labels:
+        name: jenkins-master
+    spec:
+      containers:
+        - name: jenkins-master
+          image: jenkins/jenkins:lts
+          ports:
+            - containerPort: 8080
+            - containerPort: 50000
+          resources:
+            limits:
+              cpu: 1
+              memory: 4Gi
+            requests:
+              cpu: 1
+              memory: 2Gi
+          volumeMounts:
+            - name: jenkins-home
+              mountPath: /var/jenkins_home
+      volumes:
+        - name: jenkins-home
+          persistentVolumeClaim:
+            claimName: pvc-jenkins
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jenkins-master
+  namespace: k8s-plugin
+spec:
+  type: LoadBalancer
+  selector:
+    name: jenkins-master
+  ports:
+    -
+      name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP
+    -
+      name: slave
+      port: 50000
+      protocol: TCP
